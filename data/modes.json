@@ -4,20 +4,9 @@
     "actions": [
       {
         "type": "launch",
-        "app": "discord.exe",
-        "args": "--autoconnect 123456 --minimized",
-        "check_running": true,
-        "delay_after": 2.0
-      },
-      {
-        "type": "launch_uri",
-        "uri": "steam://rungameid/431960",
-        "fallback": "C:/Games/MyGame/game.exe"
-      },
-      {
-        "type": "kill",
-        "target": "wallpaper32.exe",
-        "force": true
+        "target": "discord.exe",
+        "args": "--minimized",
+        "check_running": true
       },
       {
         "type": "volume",
@@ -27,72 +16,93 @@
         "duration": 1.5
       },
       {
-        "type": "volume",
-        "target": "discord.exe",
-        "level": 90
+        "type": "keyboard_shortcut",
+        "action": "disable",
+        "keys": ["win", "alt+tab"]
       }
+
     ],
     "notifications": {
-      "start_sound": "modes/gamemode",
-      "error_sound": "errors/error_1"
+      "start_sound": "modes/game_on",
+      "end_sound": "modes/game_off",
+      "tts_start": "Игровой режим активирован"
     },
     "requirements": {
       "min_ram_gb": 8,
-      "required_apps": ["discord.exe"]
+      "required_apps": ["discord.exe", "steam.exe"]
     }
   },
-  
+
   "рабочий": {
     "description": "Настройки для продуктивной работы",
     "actions": [
       {
         "type": "launch",
-        "app": "code.exe",
-        "args": "--disable-extensions",
-        "check_running": false
-      },
-      {
-        "type": "launch",
-        "app": "notion.exe",
-        "delay_after": 1.5
+        "target": "code.exe",
+        "args": "--disable-extensions"
       },
       {
         "type": "volume",
         "target": "system",
-        "level": 50,
+        "level": 30,
         "smooth": true
       },
+
       {
-        "type": "execute",
-        "command": "npm run dev",
-        "cwd": "C:/Projects/MyApp"
+        "type": "script",
+        "path": "scripts/disable_distractions.bat"
       }
     ],
     "notifications": {
-      "start_sound": "modes/work_on",
-      "complete_sound": "system/ready"
-    },
-    "environment": {
-      "env_vars": {
-        "DEBUG_MODE": "false"
-      }
+      "start_sound": "modes/workmode",
+      "tts_start": "Включаю рабочий режим"
     }
   },
-  
-  "кино": {
-    "description": "Оптимальные настройки для просмотра фильмов",
+
+  "мультимедиа": {
+    "description": "Настройки для просмотра контента",
     "actions": [
       {
         "type": "volume",
         "target": "system",
-        "level": 50,
-        "smooth": true
+        "level": 60
       },
       {
         "type": "display",
         "action": "dim",
-        "level": 100
+        "brightness": 70
+      },
+      {
+        "type": "kill_process",
+        "target": "discord.exe",
+        "force": true
       }
-    ]
+    ],
+    "notifications": {
+      "start_sound": "modes/media_on"
+    }
+  },
+
+  "энергосбережение": {
+    "description": "Режим экономии энергии",
+    "actions": [
+      {
+        "type": "power",
+        "plan": "power_saver"
+      },
+      {
+        "type": "display",
+        "action": "dim",
+        "brightness": 40
+      },
+      {
+        "type": "volume",
+        "target": "system",
+        "level": 20
+      }
+    ],
+    "requirements": {
+      "on_battery": true
+    }
   }
 }

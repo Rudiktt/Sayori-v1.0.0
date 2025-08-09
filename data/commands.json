@@ -1,46 +1,65 @@
 {
   "voice_commands": {
     "управление режимами": {
-      "Включи игровой режим": {
+      "активируй игровой режим": {
         "action": "activate_mode",
-        "params": {"mode": "игровой"},
-        "confirmation": "",
-        "alternatives": [
-          "включи игровой мод",
-          "переключи на игры",
-          "старт гейминг"
-        ]
+        "params": {
+          "mode": "игровой"
+        },
+        "response": "Активирую игровой режим",
+        "sound": "modes/gamemode_on"
       },
-      "Включи рабочий режим": {
+      "включи рабочий режим": {
         "action": "activate_mode",
-        "params": {"mode": "рабочий"},
-        "confirmation": "modes/work_activated"
+        "params": {
+          "mode": "рабочий"
+        },
+        "response": "Включаю рабочий режим",
+        "sound": "modes/workmode_on"
       }
     },
     
     "управление звуком": {
-      "громкость на X": {
+      "громкость на (\\d{1,3})": {
         "action": "set_volume",
-        "params": {"level": "X"},
-        "regex": "громкость на (\\d{1,3})",
-        "confirmation": "volume/sound_change"
+        "params": {
+          "level": "$1"
+        },
+        "regex": true,
+        "response": "Устанавливаю громкость на $1%",
+        "sound": "volume/change"
       },
       "выключи звук": {
         "action": "set_mute",
-        "params": {"state": true},
-        "confirmation": "volume/sound_off"
+        "params": {
+          "state": true
+        },
+        "response": "Звук отключен",
+        "sound": "volume/mute"
       }
     },
     
     "системные команды": {
       "перезагрузка": {
-        "action": "reboot",
-        "confirmation": "system/reboot",
-        "requires_confirmation": true
+        "action": "system_reboot",
+        "requires_confirmation": true,
+        "response": "Подтвердите перезагрузку",
+        "sound": "system/warning"
       },
       "список команд": {
         "action": "show_help",
-        "response": "Доступные команды: ..."
+        "response": "Доступные команды: управление режимами, звуком, системные"
+      }
+    },
+    
+    "медиа управление": {
+      "пауза": {
+        "action": "media_pause",
+        "keyboard_shortcut": "space"
+      },
+      "следующий трек": {
+        "action": "media_next",
+        "keyboard_shortcut": "ctrl+right"
       }
     }
   },
@@ -56,29 +75,16 @@
     "volume": {
       "description": "Управление громкостью",
       "actions": {
-        "<0-100>": {"call": "set_volume", "args": {"level": "$1"}},
+        "set": {"call": "set_volume", "args": {"level": "$1"}},
         "mute": {"call": "set_mute", "args": {"state": true}}
       }
     }
   },
   
-  "system_triggers": {
-    "high_cpu_usage": {
-      "threshold": 90,
-      "action": "reduce_load",
-      "params": {"level": "medium"}
-    },
-    "low_battery": {
-      "threshold": 15,
-      "action": "power_save_mode",
-      "emergency": true
-    }
-  },
-  
   "metadata": {
-    "version": "1.0",
+    "version": "1.1",
     "author": "Rudiktt",
-    "last_updated": "07-08-2025",
-    "default_confirmation": "system/default_confirm"
+    "wake_word": "сайори",
+    "default_sound": "system/notification"
   }
 }
