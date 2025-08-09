@@ -3,7 +3,7 @@ import time
 from typing import Optional, Callable
 from pathlib import Path
 from .voice_engine import VoiceEngine
-from modules.audio_controller import AudioController
+from .audio_controller import AudioController
 from core.mode_manager import ModeManager
 import json
 from config import config

@@ -17,8 +17,7 @@ config: Dict[str, Any] = {
         "models": str(MODELS_DIR / "vosk-model-small-ru"),
         "logs": str(LOGS_DIR / "assistant.log"),
         "commands_config": str(BASE_DIR / "data" / "commands.json"),
-        "modes_config": str(BASE_DIR / "data" / "modes.json")
-        
+        "modes_config": str(BASE_DIR / "data" / "modes.json")    
     },
     
     "audio": {

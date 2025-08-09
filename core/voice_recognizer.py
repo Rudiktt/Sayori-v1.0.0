@@ -1,105 +1,133 @@
-import speech_recognition as sr
+import json
 import logging
-import time
-from typing import Optional, List
+import subprocess
+import webbrowser
+from pathlib import Path
+from typing import Optional, Any, Dict
+from core.voice_engine import VoiceEngine
+from core.audio_controller import AudioController
+from core.mode_manager import ModeManager
+from core.voice_recognizer import VoiceRecognizer
 
-class VoiceRecognizer:
-    def __init__(self, config):
+class Assistant:
+    def __init__(self, config: Dict[str, Any]):
         self.config = config
+        self._setup_logging()
+        self._init_components()
+        self.commands = self._load_commands()
+        self.logger.info("Сайори инициализирована!")
+        
+    def _setup_logging(self):
         self.logger = logging.getLogger(self.__class__.__name__)
-        self.recognizer = sr.Recognizer()
+        handler = logging.FileHandler(self.config["paths"]["logs"])
+        formater = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        handler.setFormatter(formater)
+        self.logger.addHandler(handler)
+        self.logger.setLevel(logging.INFO)
         
-        # Настройки распознавателя
-        self.recognizer.dynamic_energy_threshold = False
-        self.recognizer.energy_threshold = config["audio"]["energy_threshold"]
-        self.recognizer.pause_threshold = 0.8
+    def _init_components(self):
+        self.voice_engine = VoiceEngine(self.config)
+        self.audio_controller = AudioController(
+            max_volume=self.config["audio"]["max_volume"],
+            min_volume=self.config["audio"]["min_volume"]
+        )
+        self.mode_manager = ModeManager(self.config["paths"]["modes_config"])
+        self.voice_recognizer = VoiceRecognizer(self.config)
         
-        # Инициализация микрофона
-        self.microphone = self._initialize_microphone()
-        self._test_microphone()
-
-    def _initialize_microphone(self) -> sr.Microphone:
-        """Автоматический подбор рабочего микрофона"""
-        available_mics = self._get_microphone_list()
-        if not available_mics:
-            raise RuntimeError("Микрофоны не обнаружены")
-
-        # Пробуем микрофон из конфига
-        for device_index in [self.config["microphone"]["device_index"], *range(len(available_mics))]:
-            try:
-                mic = sr.Microphone(
-                    device_index=device_index,
-                    sample_rate=self.config["audio"]["sample_rate"]
-                )
-                self.logger.info(f"Пробуем микрофон #{device_index}: {available_mics[device_index]}")
-                return mic
-            except Exception as e:
-                self.logger.warning(f"Микрофон #{device_index} недоступен: {str(e)}")
-                continue
-
-        raise RuntimeError("Ни один микрофон не работает")
-
-    def _get_microphone_list(self) -> List[str]:
-        """Получает список микрофонов с обработкой ошибок"""
+    def _load_commands(self) -> Dict[str, Dict]:
         try:
-            return sr.Microphone.list_microphone_names()
+            with open(self.config["paths"]["commands_config"], "r", encoding="utf-8") as f:
+                commands = json.load(f)
+                
+                if "voice_commands" not in commands:
+                    raise ValueError("В конфигурации отсутствуют команды")
+                self.logger.info(f"Загружено {sum(len(c) for c in commands['voice_commands'].values())} команд")
+                return commands["voice_commands"]
         except Exception as e:
-            self.logger.error(f"Ошибка получения списка микрофонов: {str(e)}")
-            return []
-
-    def _test_microphone(self):
-        #Тестирование микрофона
-        for attempt in range(3):
-            try:
-                with self.microphone as source:
-                    self.logger.info(f"Калибровка (попытка {attempt+1})...")
-                    self.recognizer.adjust_for_ambient_noise(source, duration=2)
-                    print("✅ Микрофон готов к использованию")
+            self.logger.error(f"Ошибка при загрузке команд: {e}")
+            return {}
+        
+    def process_command(self, command: str) -> bool:
+        try:
+            command = command.lower().strip()
+            self.logger.info(f"Обработка команды: {command}")
+            for category in self.commands.values():
+                for pattern, action in category.items():
+                    if self._match_command(command, pattern):
+                        return self._execute_action(action, command)
+            self.say("Не поняла, что ты хочешь от меня :(")
+            return False
+        except Exception as e:
+            self.logger.error(f"Ошибка при обработке команды: {e}")
+            return False
+        
+    def _match_command(self, pattern: str, command: str) -> bool:
+        if pattern.lower() in command:
+            return True
+        
+        if "alternatives" in self.commands.get(pattern, {}):
+            for alt in self.commands[pattern]["alternatives"]:
+                if alt in command:
                     return True
-            except Exception as e:
-                self.logger.warning(f"Ошибка калибровки: {str(e)}")
-                time.sleep(1)
-        
-        print("⚠️ Микрофон не отвечает, попробуйте:")
-        print("1. Проверить подключение микрофона")
-        print("2. Дать разрешение на доступ")
-        print("3. Выбрать другой микрофон в настройках")
         return False
-
-    def listen(self) -> Optional[str]:
-    #Распознавание
-        try:
-            with self.microphone as source:
-                print("\n🔊 Говорите сейчас...", end='', flush=True)
-                audio = self.recognizer.listen(
-                    source,
-                    timeout=self.config["microphone"]["timeout"],
-                    phrase_time_limit=5
-                )
-            
-            text = self.recognizer.recognize_google(audio, language="ru-RU")
-            print(f"\r🎤 Распознано: {text}")
-            return text.lower()
-            
-        except sr.WaitTimeoutError:
-            print("\r⌛ Таймаут ожидания...", end='')
-            return None
-        except sr.UnknownValueError:
-            print("\r❌ Речь не распознана", end='')
-            return None
-        except Exception as e:
-            self.logger.error(f"Ошибка: {str(e)}")
-            return None
-
-    def get_microphone_info(self) -> str:
-        #Инфа о микрофоне (текущем)
-        mics = sr.Microphone.list_microphone_names()
-        return f"Используется микрофон #{self.microphone.device_index}: {mics[self.microphone.device_index]}"
     
-    def register_mode_command(self, modes: list):
-        self.mode_commands = {
-            "активируй режим": modes,
-            "включи режим": modes,
-            "переключи в режим": modes
+    def _execute_action(self, action: Dict, command: str) -> bool:
+        action_type = action.get["action"]
+        try:
+            if action_type == "activate_mode":
+                mode = action["params"]["mode"]
+                self.say(f"Активирую режим: {mode}")
+                
+            elif action_type == "set_volume":
+                level = int(action["params"]["level"])
+                self.audio_controller.set_volume(level)
+                self.say(f"Громкость установлена на {level}%")
+                return True
+
+            elif action_type == "launch":
+                app = action["params"]["app"]
+                subprocess.Popen(app, shell=True)
+                self.say(f"Запускаю {app}")
+                return True
+
+            elif action_type == "open_url":
+                url = action["params"]["url"]
+                webbrowser.open(url)
+                self.say("Открываю ссылку")
+                return True
+
+            elif action_type == "system":
+                if action["params"]["command"] == "shutdown":
+                    self.say("Выключаю систему")
+                    return True
+                
+            self.logger.error(f"Неизвестный тип действия: {action_type}")
+            return False
+        except Exception as e:
+            self.logger.error(f"Ошибка при выполнении действия: {e}")
+            self.say("Не могу выполнить команду")
+            
+    def say(self, text: str):
+        try:
+            self.voice_engine.synthesize(text)
+            self.logger.info(f"Сказал: {text}")
+        except Exception as e:
+            self.logger.error(f"Ошибка синтеза речи: {e}")
+            print(f"Сайори: {text}")
+            
+    def get_available_commands(self) -> Dict[str, list]:
+        return {
+            "Режимы": list(self.commands["управление режимами"].keys()),
+            "Звук": list(self.commands["управление звуком"].keys()),
+            "Система": list(self.commands["системные команды"].keys())
         }
-        self.logger.info(f"Зарегистрировано режимов: {len(modes)}")
+        
+    def run_voice_loop(self):
+        try:
+            while True:
+                command = self.voice_recognizer.listen()
+                if command and "сайори" in command:
+                    self.process_command(command.replace("сайори", "").strip())
+        except KeyboardInterrupt:
+            self.logger.info("Сайори остановлена...")
+    
