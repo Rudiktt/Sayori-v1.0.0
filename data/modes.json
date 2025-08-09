@@ -1,0 +1,98 @@
+{
+  "игровой": {
+    "description": "Оптимизация системы для игр",
+    "actions": [
+      {
+        "type": "launch",
+        "app": "discord.exe",
+        "args": "--autoconnect 123456 --minimized",
+        "check_running": true,
+        "delay_after": 2.0
+      },
+      {
+        "type": "launch_uri",
+        "uri": "steam://rungameid/431960",
+        "fallback": "C:/Games/MyGame/game.exe"
+      },
+      {
+        "type": "kill",
+        "target": "wallpaper32.exe",
+        "force": true
+      },
+      {
+        "type": "volume",
+        "target": "system",
+        "level": 80,
+        "smooth": true,
+        "duration": 1.5
+      },
+      {
+        "type": "volume",
+        "target": "discord.exe",
+        "level": 90
+      }
+    ],
+    "notifications": {
+      "start_sound": "modes/gamemode",
+      "error_sound": "errors/error_1"
+    },
+    "requirements": {
+      "min_ram_gb": 8,
+      "required_apps": ["discord.exe"]
+    }
+  },
+  
+  "рабочий": {
+    "description": "Настройки для продуктивной работы",
+    "actions": [
+      {
+        "type": "launch",
+        "app": "code.exe",
+        "args": "--disable-extensions",
+        "check_running": false
+      },
+      {
+        "type": "launch",
+        "app": "notion.exe",
+        "delay_after": 1.5
+      },
+      {
+        "type": "volume",
+        "target": "system",
+        "level": 50,
+        "smooth": true
+      },
+      {
+        "type": "execute",
+        "command": "npm run dev",
+        "cwd": "C:/Projects/MyApp"
+      }
+    ],
+    "notifications": {
+      "start_sound": "modes/work_on",
+      "complete_sound": "system/ready"
+    },
+    "environment": {
+      "env_vars": {
+        "DEBUG_MODE": "false"
+      }
+    }
+  },
+  
+  "кино": {
+    "description": "Оптимальные настройки для просмотра фильмов",
+    "actions": [
+      {
+        "type": "volume",
+        "target": "system",
+        "level": 50,
+        "smooth": true
+      },
+      {
+        "type": "display",
+        "action": "dim",
+        "level": 100
+      }
+    ]
+  }
+}
