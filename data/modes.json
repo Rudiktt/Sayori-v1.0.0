@@ -14,13 +14,7 @@
         "level": 80,
         "smooth": true,
         "duration": 1.5
-      },
-      {
-        "type": "keyboard_shortcut",
-        "action": "disable",
-        "keys": ["win", "alt+tab"]
       }
-
     ],
     "notifications": {
       "start_sound": "modes/game_on",
@@ -46,11 +40,6 @@
         "target": "system",
         "level": 30,
         "smooth": true
-      },
-
-      {
-        "type": "script",
-        "path": "scripts/disable_distractions.bat"
       }
     ],
     "notifications": {

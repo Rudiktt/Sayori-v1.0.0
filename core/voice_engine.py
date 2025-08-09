@@ -1,96 +1,124 @@
-import os
-import threading
-import time
 import logging
+import time
 from pathlib import Path
-from typing import Dict, Optional, Set
+from typing import Dict, Optional
 import simpleaudio as sa
+import sys
+from pathlib import Path
+
+# Добавляем корень проекта в пути поиска модулей
+sys.path.append(str(Path(__file__).parent.parent))
+import config
 
 class VoiceEngine:
     def __init__(self, config: dict):
+        """
+        Инициализация голосового движка.
+        
+        :param config: Конфигурация из config.py
+        """
         self._setup_logging()
-        self.sounds_root = Path(config.get('sounds_path', ''))
-        self._validate_paths()
-        
-        self._current_play_obj: Optional[sa.PlayObject] = None
-        self._playback_lock = threading.RLock()
+        self.sounds_root = Path(config["paths"]["sounds"])
         self._loaded_sounds: Dict[str, Path] = {}
+        self._current_play_obj: Optional[sa.PlayObject] = None
         self._preload_sounds()
-        
+        self.logger.info("Голосовой движок инициализирован")
+
     def _setup_logging(self):
+        """Настройка системы логирования"""
         self.logger = logging.getLogger(self.__class__.__name__)
         self.logger.setLevel(logging.INFO)
+        
+        # Вывод логов в консоль для удобства отладки
         handler = logging.StreamHandler()
         handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
         self.logger.addHandler(handler)
-        
-    def _validate_paths(self):
-        if not self.sounds_root.exists():
-            self.logger.critical(f"Папка с звуками не найдена...: {self.sounds_root}")
-            raise FileNotFoundError(f"Папка со звуками не найдена...: {self.sounds_root}")
-        
+
     def _preload_sounds(self):
+        """Предварительная загрузка всех звуковых файлов"""
         try:
-            sound_files = set()
-            for ext in ['.wav', '.mp3', '.wave']:
-                sound_files.update(self.sounds_root.rglob(f'*{ext}'))
+            # Создаем папку sounds, если её нет
+            self.sounds_root.mkdir(exist_ok=True, parents=True)
             
+            # Ищем только .wav файлы
+            sound_files = list(self.sounds_root.rglob("*.wav"))
+            
+            if not sound_files:
+                self.logger.warning(f"В папке {self.sounds_root} не найдено .wav файлов")
+                return
+
             for file in sound_files:
+                # Создаем ID звука (относительный путь без расширения)
                 sound_id = str(file.relative_to(self.sounds_root)).replace("\\", "/")[:-4]
                 self._loaded_sounds[sound_id] = file
                 self.logger.debug(f"Загружен звук: {sound_id}")
-            self.logger.info(f"Загружено {len(self._loaded_sounds)} звуков")
+
+            self.logger.info(f"Успешно загружено {len(self._loaded_sounds)} звуков")
+
         except Exception as e:
             self.logger.error(f"Ошибка при загрузке звуков: {e}")
             raise
-    def play(self, sound_id: str, blocking: bool = False, timeout: float = 5.0) -> bool:
-        with self._playback_lock:
-            if sound_id not in self._loaded_sounds:
-                self.logger.error(f"Звук не найден: {sound_id}")
-                return False
-            try:
-                self._stop_current()
-                wave_object = sa.WaveObject.from_wave_file(str(self._loaded_sounds[sound_id]))
-                self._current_play_obj = wave_object.play()
-                self.logger.info(f"Звук {sound_id} играет")
-                
-                if blocking:
-                    return self._wait_for_end(timeout)
-                return True
-            except Exception as e:
-                self.logger.error(f"Ошибка при воспроизведении звука {sound_id}: {e}")
-                return False
+
+    def play(self, sound_id: str, blocking: bool = False) -> bool:
+        """
+        Воспроизведение звука
+        
+        :param sound_id: Идентификатор звука (например "system/start")
+        :param blocking: Блокировать ли выполнение пока звук не закончится
+        :return: Успешность воспроизведения
+        """
+        if sound_id not in self._loaded_sounds:
+            self.logger.error(f"Звук '{sound_id}' не найден")
+            return False
+
+        try:
+            self.stop()  # Останавливаем текущее воспроизведение
             
-    def _stop_current(self):
+            wave_obj = sa.WaveObject.from_wave_file(str(self._loaded_sounds[sound_id]))
+            self._current_play_obj = wave_obj.play()
+            self.logger.info(f"Воспроизводится звук: {sound_id}")
+
+            if blocking:
+                while self.is_playing():
+                    time.sleep(0.1)
+            
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Ошибка воспроизведения звука {sound_id}: {e}")
+            return False
+
+    def stop(self):
+        """Остановка текущего воспроизведения"""
         if self._current_play_obj and self._current_play_obj.is_playing():
-            self.logger.debug(f"Останавливаем текущий звук...")
             self._current_play_obj.stop()
             self._current_play_obj = None
-            
-    def _wait_for_end(self, timeout: float) -> bool:
-        start = time.time()
-        while self.is_playing():
-            if time.time() - start > timeout:
-                self.logger.warning(f"Таймаут воспроизведения ({timeout}) сек)")
-                self._stop_current()
-                return False
-            time.sleep(0.05)
-        return True
-    
+            self.logger.debug("Воспроизведение остановлено")
+
     def is_playing(self) -> bool:
-        with self._playback_lock:
-            return bool(
-                self._current_play_obj and
-                self._current_play_obj.is_playing()
-            )
+        """Проверка, идет ли воспроизведение"""
+        return self._current_play_obj is not None and self._current_play_obj.is_playing()
+
+    def get_loaded_sounds(self) -> list:
+        """Получить список загруженных звуков"""
+        return list(self._loaded_sounds.keys())
+
+
+if __name__ == "__main__":
+    # Тестовый запуск
+    print("\nТестирование VoiceEngine...")
+    try:
+        engine = VoiceEngine(config.config)
+        print(f"Загружены звуки: {engine.get_loaded_sounds()}")
+        
+        # Тест воспроизведения (если есть звуки)
+        if engine.get_loaded_sounds():
+            test_sound = engine.get_loaded_sounds()[0]  # Берем первый доступный звук
+            print(f"\nТестируем воспроизведение: {test_sound}")
+            engine.play(test_sound, blocking=True)
+            print("Тест завершен успешно!")
+        else:
+            print("Нет звуков для тестирования. Добавьте .wav файлы в папку sounds/")
             
-    def stop_all(self):
-        with self._playback_lock:
-            self._stop_current()
-            self.logger.info("Звуков больше нет!")
-            
-    def get_loaded_sounds(self) -> Set[str]:
-        return set(self.get_loaded_sounds.keys())
-    
-    def play_blocking(self, sound_id: str, timeout: float = 5.0) -> bool:
-        return self.play(sound_id, blocking=True, timeout=timeout)
+    except Exception as e:
+        print(f"Ошибка при тестировании: {e}")

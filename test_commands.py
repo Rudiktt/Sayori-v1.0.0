@@ -1,18 +1,30 @@
-from main import SayoriMain
-import time
+from core.assistant import Assistant
+import config
+import logging
 
-app = SayoriMain()
+# Включим логирование в консоль
+logging.basicConfig(level=logging.INFO)
 
-# Тестовые команды
-test_commands = [
-    "привет",
-    "как дела",
-    "включи рабочий режим",
-    "громкость на 70",
-    "пока"
-]
+def main():
+    print("\n=== Тест ассистента ===")
+    assistant = Assistant(config.config)
+    
+    # Проверка загрузки команд
+    print(f"\nЗагружено команд: {sum(len(c) for c in assistant.commands.values())}")
+    
+    # Тестовые команды
+    test_commands = [
+        "громкость 50",
+        "активируй игровой режим",
+        "несуществующая команда"
+    ]
+    
+    for cmd in test_commands:
+        print(f"\n> Команда: '{cmd}'")
+        success = assistant.process_command(cmd)
+        print(f"Результат: {'✅ Успешно' if success else '❌ Ошибка или команда не найдена'}")
+    
+    print("\nТест завершен!")
 
-for cmd in test_commands:
-    print(f"\nТестируем: '{cmd}'")
-    app.command_queue.put(("test", cmd))
-    time.sleep(1)
+if __name__ == "__main__":
+    main()

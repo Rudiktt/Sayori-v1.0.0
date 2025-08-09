@@ -1,133 +1,111 @@
-import json
+import sys
 import logging
-import subprocess
-import webbrowser
 from pathlib import Path
-from typing import Optional, Any, Dict
-from core.voice_engine import VoiceEngine
-from core.audio_controller import AudioController
-from core.mode_manager import ModeManager
-from core.voice_recognizer import VoiceRecognizer
+import speech_recognition as sr
+from typing import Optional
 
-class Assistant:
-    def __init__(self, config: Dict[str, Any]):
+# Добавляем корень проекта в пути импорта
+sys.path.append(str(Path(__file__).parent.parent))
+
+try:
+    import config as cfg
+except ImportError:
+    raise ImportError("Не найден config.py в корне проекта!")
+
+class VoiceRecognizer:
+    def __init__(self, config: dict):
+        """
+        Инициализация распознавателя голоса.
+        
+        :param config: Конфиг из config.py (разделы 'microphone' и 'language')
+        """
         self.config = config
-        self._setup_logging()
-        self._init_components()
-        self.commands = self._load_commands()
-        self.logger.info("Сайори инициализирована!")
-        
-    def _setup_logging(self):
         self.logger = logging.getLogger(self.__class__.__name__)
-        handler = logging.FileHandler(self.config["paths"]["logs"])
-        formater = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        handler.setFormatter(formater)
-        self.logger.addHandler(handler)
-        self.logger.setLevel(logging.INFO)
-        
-    def _init_components(self):
-        self.voice_engine = VoiceEngine(self.config)
-        self.audio_controller = AudioController(
-            max_volume=self.config["audio"]["max_volume"],
-            min_volume=self.config["audio"]["min_volume"]
-        )
-        self.mode_manager = ModeManager(self.config["paths"]["modes_config"])
-        self.voice_recognizer = VoiceRecognizer(self.config)
-        
-    def _load_commands(self) -> Dict[str, Dict]:
+        self.recognizer = sr.Recognizer()
+        self.microphone = self._init_microphone()
+        self._calibrate()
+
+    def _init_microphone(self) -> Optional[sr.Microphone]:
+        """Настройка микрофона с учетом конфига"""
         try:
-            with open(self.config["paths"]["commands_config"], "r", encoding="utf-8") as f:
-                commands = json.load(f)
-                
-                if "voice_commands" not in commands:
-                    raise ValueError("В конфигурации отсутствуют команды")
-                self.logger.info(f"Загружено {sum(len(c) for c in commands['voice_commands'].values())} команд")
-                return commands["voice_commands"]
+            device_index = self.config["microphone"].get("device_index")
+            sample_rate = self.config["audio"].get("sample_rate", 44100)
+            return sr.Microphone(
+                device_index=device_index,
+                sample_rate=sample_rate
+            )
         except Exception as e:
-            self.logger.error(f"Ошибка при загрузке команд: {e}")
-            return {}
-        
-    def process_command(self, command: str) -> bool:
+            self.logger.error(f"Ошибка инициализации микрофона: {e}")
+            return None
+
+    def _calibrate(self):
+        """Калибровка уровня фонового шума"""
+        if not self.microphone:
+            return
+            
         try:
-            command = command.lower().strip()
-            self.logger.info(f"Обработка команды: {command}")
-            for category in self.commands.values():
-                for pattern, action in category.items():
-                    if self._match_command(command, pattern):
-                        return self._execute_action(action, command)
-            self.say("Не поняла, что ты хочешь от меня :(")
-            return False
+            with self.microphone as source:
+                self.recognizer.adjust_for_ambient_noise(
+                    source, 
+                    duration=self.config["microphone"].get("calibration_duration", 1.0)
+                )
+            self.logger.info("Микрофон откалиброван")
         except Exception as e:
-            self.logger.error(f"Ошибка при обработке команды: {e}")
-            return False
-        
-    def _match_command(self, pattern: str, command: str) -> bool:
-        if pattern.lower() in command:
-            return True
-        
-        if "alternatives" in self.commands.get(pattern, {}):
-            for alt in self.commands[pattern]["alternatives"]:
-                if alt in command:
-                    return True
-        return False
+            self.logger.error(f"Ошибка калибровки: {e}")
+
+    def listen(self) -> Optional[str]:
+        """
+        Слушает микрофон и возвращает распознанный текст.
+        Возвращает None при таймауте или ошибке.
+        """
+        if not self.microphone:
+            self.logger.warning("Микрофон не доступен")
+            return None
+
+        try:
+            with self.microphone as source:
+                self.logger.debug("Ожидание голосовой команды...")
+                audio = self.recognizer.listen(
+                    source,
+                    timeout=self.config["microphone"].get("timeout", 3),
+                    phrase_time_limit=self.config["microphone"].get("phrase_limit", 5)
+                )
+
+            text = self.recognizer.recognize_google(
+                audio, 
+                language=self.config.get("language", "ru-RU")
+            ).lower()
+            
+            self.logger.info(f"Распознано: {text}")
+            return text
+
+        except sr.WaitTimeoutError:
+            self.logger.debug("Таймаут ожидания голоса")
+            return None
+        except sr.UnknownValueError:
+            self.logger.debug("Речь не распознана")
+            return None
+        except Exception as e:
+            self.logger.error(f"Ошибка распознавания: {e}")
+            return None
+
+if __name__ == "__main__":
+    # Тестовый режим
+    logging.basicConfig(level=logging.INFO)
     
-    def _execute_action(self, action: Dict, command: str) -> bool:
-        action_type = action.get["action"]
-        try:
-            if action_type == "activate_mode":
-                mode = action["params"]["mode"]
-                self.say(f"Активирую режим: {mode}")
-                
-            elif action_type == "set_volume":
-                level = int(action["params"]["level"])
-                self.audio_controller.set_volume(level)
-                self.say(f"Громкость установлена на {level}%")
-                return True
-
-            elif action_type == "launch":
-                app = action["params"]["app"]
-                subprocess.Popen(app, shell=True)
-                self.say(f"Запускаю {app}")
-                return True
-
-            elif action_type == "open_url":
-                url = action["params"]["url"]
-                webbrowser.open(url)
-                self.say("Открываю ссылку")
-                return True
-
-            elif action_type == "system":
-                if action["params"]["command"] == "shutdown":
-                    self.say("Выключаю систему")
-                    return True
-                
-            self.logger.error(f"Неизвестный тип действия: {action_type}")
-            return False
-        except Exception as e:
-            self.logger.error(f"Ошибка при выполнении действия: {e}")
-            self.say("Не могу выполнить команду")
-            
-    def say(self, text: str):
-        try:
-            self.voice_engine.synthesize(text)
-            self.logger.info(f"Сказал: {text}")
-        except Exception as e:
-            self.logger.error(f"Ошибка синтеза речи: {e}")
-            print(f"Сайори: {text}")
-            
-    def get_available_commands(self) -> Dict[str, list]:
-        return {
-            "Режимы": list(self.commands["управление режимами"].keys()),
-            "Звук": list(self.commands["управление звуком"].keys()),
-            "Система": list(self.commands["системные команды"].keys())
-        }
-        
-    def run_voice_loop(self):
-        try:
-            while True:
-                command = self.voice_recognizer.listen()
-                if command and "сайори" in command:
-                    self.process_command(command.replace("сайори", "").strip())
-        except KeyboardInterrupt:
-            self.logger.info("Сайори остановлена...")
+    print("=== Тест голосового ввода ===")
+    print("Говорите после звукового сигнала...")
+    
+    try:
+        recognizer = VoiceRecognizer(cfg.config)
+        while True:
+            text = recognizer.listen()
+            if text:
+                print(f"> {text}")
+            else:
+                print("(команда не распознана)")
+    except KeyboardInterrupt:
+        print("\nТест завершен")
+    except Exception as e:
+        print(f"Ошибка: {e}")
     
